@@ -2331,17 +2331,6 @@ int http_wait_for_request(struct session *s, struct channel *req, int an_bit)
 			req->buf->i,
 			req->analysers);
 
-	/*if(tick_is_expired(s->fe->timeout.client, now_ms))
-	{
-		send_log(s->fe, LOG_NOTICE, "I was right\n");
-		struct http_msg *req_msg = &txn->req;
-		int header_length = (s->req->buf->i - txn->req.eoh - 2) * -1;
-
-		send_log(s->be, LOG_NOTICE, "Total data read %llu, header_length: %d, body_len: %llu\n", s->req->total, header_length, req_msg->body_len);
-		send_log(s->be, LOG_NOTICE, "Client timeout %d, now %d & current analyzer exp: %d\n", s->fe->timeout.client, now_ms, req->analyse_exp);
-
-	}*/
-
 	/* we're speaking HTTP here, so let's speak HTTP to the client */
 	s->srv_error = http_return_srv_error;
 
@@ -3807,6 +3796,27 @@ int http_process_request(struct session *s, struct channel *req, int an_bit)
 	 * may have separate values for ->fe, ->be.
 	 */
 
+	/*struct http_msg *req_msg = &txn->req;
+	int header_length = (s->req->buf->i - txn->req.eoh - 2) * -1;
+
+	if (((req_msg->body_len + header_length) > s->req->total)) {
+		send_log(s->fe, LOG_NOTICE, "body_len: %llu, header_len: %d, req_total: %llu\n", req_msg->body_len, header_length, s->req->total);
+		txn->req.msg_state = HTTP_MSG_ERROR;
+		txn->status = 408;
+		req->analysers = 0;
+		stream_int_retnclose(req->prod, http_error_message(s, HTTP_ERR_408));
+
+		s->fe->fe_counters.failed_req++;
+		if (s->listener->counters)
+			s->listener->counters->failed_req++;
+
+		if (!(s->flags & SN_ERR_MASK))
+			s->flags |= SN_ERR_PRXCOND;
+		if (!(s->flags & SN_FINST_MASK))
+			s->flags |= SN_FINST_R;
+		return 0;
+	}*/
+
 	/*
 	 * If HTTP PROXY is set we simply get remote server address parsing
 	 * incoming request. Note that this requires that a connection is
@@ -4093,6 +4103,7 @@ int http_process_request(struct session *s, struct channel *req, int an_bit)
 		req->cons->flags |= SI_FL_NOHALF;
 
 	s->logs.tv_request = now;
+
 	/* OK let's go on with the BODY now */
 	return 1;
 
@@ -5159,11 +5170,6 @@ int http_wait_for_response(struct session *s, struct channel *rep, int an_bit)
 			rep->buf->i,
 			rep->analysers);
 
-	/*if(tick_is_expired(s->fe->timeout.client, now_ms))
-	{
-		send_log(s->fe, LOG_NOTICE, "I was right\n");
-	}*/
-
 	/*
 	 * Now parse the partial (or complete) lines.
 	 * We will check the response syntax, and also join multi-line
@@ -5309,28 +5315,25 @@ abort_response:
 			struct http_msg *req_msg = &txn->req;
 			int header_length = (s->req->buf->i - txn->req.eoh - 2) * -1;
 
-			//send_log(s->be, LOG_NOTICE, "Total data read %llu, header_length: %d, body_len: %llu\n", s->req->total, header_length, req_msg->body_len);
-
 			if ((req_msg->flags & CF_READ_TIMEOUT) && ((req_msg->body_len + header_length) > s->req->total)) {
 				if (!(s->flags & SN_ERR_MASK))
 					s->flags |= SN_ERR_CLITO;
 				if(s->flags & TX_WAIT_NEXT_RQ)
-				{	/* Here we process low-level errors for keep-alive requests. In
-					 * short, if the request is not the first one and it experiences
-					 * a timeout, read error or shutdown, we just silently close so
-					 * that the client can try again.
-					 */
+				{	// Here we process low-level errors for keep-alive requests. In
+					// short, if the request is not the first one and it experiences
+					 // a timeout, read error or shutdown, we just silently close so
+					 // that the client can try again.
+					 //
 					txn->status = 0;
 					req_msg->msg_state = HTTP_MSG_RQBEFORE;
 					s->req->analysers = 0;
 					s->logs.logwait = 0;
 					s->logs.level = 0;
-					s->rep->flags &= ~CF_EXPECT_MORE; /* speed up sending a previous response */
+					s->rep->flags &= ~CF_EXPECT_MORE; // speed up sending a previous response 
 					stream_int_retnclose(s->req->prod, NULL);
 					return 0;
 
 				}
-				//send_log(s->be, LOG_NOTICE, "My 408 message is being print out\n");
 				// read timeout : give up with an error message. 
 				if (req_msg->err_pos >= 0) {
 					http_capture_bad_message(&s->fe->invalid_req, s, req_msg, req_msg->msg_state, s->fe);
@@ -5348,21 +5351,14 @@ abort_response:
 					s->listener->counters->failed_req++;
 
 				if (!(s->flags & SN_FINST_MASK))
-					s->flags |= SN_FINST_R;
+					s->flags |= SN_FINST_D;
 
-				channel_auto_close(rep);
 				rep->analysers = 0;
 				rep->prod->flags |= SI_FL_NOLINGER;
 				bi_erase(rep);
 
-				if (!(s->flags & SN_ERR_MASK))
-					s->flags |= SN_ERR_SRVTO;
-				if (!(s->flags & SN_FINST_MASK))
-					s->flags |= SN_FINST_H;
-
 				return 0;
 			}
-
 
 			if (msg->err_pos >= 0)
 				http_capture_bad_message(&s->be->invalid_rep, s, msg, msg->msg_state, s->fe);
