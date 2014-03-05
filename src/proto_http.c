@@ -3796,27 +3796,6 @@ int http_process_request(struct session *s, struct channel *req, int an_bit)
 	 * may have separate values for ->fe, ->be.
 	 */
 
-	/*struct http_msg *req_msg = &txn->req;
-	int header_length = (s->req->buf->i - txn->req.eoh - 2) * -1;
-
-	if (((req_msg->body_len + header_length) > s->req->total)) {
-		send_log(s->fe, LOG_NOTICE, "body_len: %llu, header_len: %d, req_total: %llu\n", req_msg->body_len, header_length, s->req->total);
-		txn->req.msg_state = HTTP_MSG_ERROR;
-		txn->status = 408;
-		req->analysers = 0;
-		stream_int_retnclose(req->prod, http_error_message(s, HTTP_ERR_408));
-
-		s->fe->fe_counters.failed_req++;
-		if (s->listener->counters)
-			s->listener->counters->failed_req++;
-
-		if (!(s->flags & SN_ERR_MASK))
-			s->flags |= SN_ERR_PRXCOND;
-		if (!(s->flags & SN_FINST_MASK))
-			s->flags |= SN_FINST_R;
-		return 0;
-	}*/
-
 	/*
 	 * If HTTP PROXY is set we simply get remote server address parsing
 	 * incoming request. Note that this requires that a connection is
@@ -4942,6 +4921,14 @@ int http_request_forward_body(struct session *s, struct channel *req, int an_bit
 		}
 
 		if (msg->msg_state == HTTP_MSG_DATA) {
+			if ((msg->body_len + msg->eoh) > s->req->total)
+			{
+				s->rep->rto = s->fe->timeout.client;
+			}
+			else
+			{
+				s->rep->rto = s->be->timeout.server;
+			}
 			/* must still forward */
 			if (req->to_forward) {
 				req->flags |= CF_WAKE_WRITE;
