@@ -13,6 +13,9 @@ describe 'response code' do
 
     @r = Requester.new(4000)
   end
+  after :each do
+    sleep 0.2
+  end
 
   it 'should be 200 on successful response' do
     expect(@r.request(:get, '/').code).to eq(200)
