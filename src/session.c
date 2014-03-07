@@ -2401,8 +2401,18 @@ struct task *process_session(struct task *t)
 
 		if ((s->rep->flags & (CF_AUTO_CLOSE|CF_SHUTR)) == 0 &&
 		    (tick_isset(s->req->wex) || tick_isset(s->rep->rex))) {
-			s->req->flags |= CF_READ_NOEXP;
-			s->req->rex = TICK_ETERNITY;
+			if((s->txn.req.body_len + s->txn.req.eoh) < s->req->total) {
+				s->req->flags |= CF_READ_NOEXP;
+				s->req->rex = TICK_ETERNITY;
+			}
+			else
+			{
+				if(!(s->req->flags & CF_READ_TIMEOUT))
+				{
+					s->req->analysers |= AN_REQ_WAIT_HTTP;
+					s->txn.req.msg_state = HTTP_MSG_LAST_LF;
+				}
+			}
 		}
 
 		/* When any of the stream interfaces is attached to an applet,

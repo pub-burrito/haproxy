@@ -4921,20 +4921,11 @@ int http_request_forward_body(struct session *s, struct channel *req, int an_bit
 		}
 
 		if (msg->msg_state == HTTP_MSG_DATA) {
-			if ((msg->body_len + msg->eoh) > s->req->total)
-			{
-				s->rep->rto = s->fe->timeout.client;
-			}
-			else
-			{
-				s->rep->rto = s->be->timeout.server;
-			}
 			/* must still forward */
 			if (req->to_forward) {
 				req->flags |= CF_WAKE_WRITE;
 				goto missing_data;
 			}
-
 			/* nothing left to forward */
 			if (msg->flags & HTTP_MSGF_TE_CHNK)
 				msg->msg_state = HTTP_MSG_CHUNK_CRLF;
@@ -5298,55 +5289,6 @@ abort_response:
 
 		/* read timeout : return a 504 to the client. */
 		else if (rep->flags & CF_READ_TIMEOUT) {
-
-			struct http_msg *req_msg = &txn->req;
-			int header_length = (s->req->buf->i - txn->req.eoh - 2) * -1;
-
-			if ((req_msg->flags & CF_READ_TIMEOUT) && ((req_msg->body_len + header_length) > s->req->total)) {
-				if (!(s->flags & SN_ERR_MASK))
-					s->flags |= SN_ERR_CLITO;
-				if(s->flags & TX_WAIT_NEXT_RQ)
-				{	// Here we process low-level errors for keep-alive requests. In
-					// short, if the request is not the first one and it experiences
-					 // a timeout, read error or shutdown, we just silently close so
-					 // that the client can try again.
-					 //
-					txn->status = 0;
-					req_msg->msg_state = HTTP_MSG_RQBEFORE;
-					s->req->analysers = 0;
-					s->logs.logwait = 0;
-					s->logs.level = 0;
-					s->rep->flags &= ~CF_EXPECT_MORE; // speed up sending a previous response 
-					stream_int_retnclose(s->req->prod, NULL);
-					return 0;
-
-				}
-				// read timeout : give up with an error message. 
-				if (req_msg->err_pos >= 0) {
-					http_capture_bad_message(&s->fe->invalid_req, s, req_msg, req_msg->msg_state, s->fe);
-					session_inc_http_err_ctr(s);
-				}
-				txn->status = 408;
-				stream_int_retnclose(s->req->prod, http_error_message(s, HTTP_ERR_408));
-				req_msg->msg_state = HTTP_MSG_ERROR;
-				s->req->analysers = 0;
-
-				session_inc_http_req_ctr(s);
-				proxy_inc_fe_req_ctr(s->fe);
-				s->fe->fe_counters.failed_req++;
-				if (s->listener->counters)
-					s->listener->counters->failed_req++;
-
-				if (!(s->flags & SN_FINST_MASK))
-					s->flags |= SN_FINST_D;
-
-				rep->analysers = 0;
-				rep->prod->flags |= SI_FL_NOLINGER;
-				bi_erase(rep);
-
-				return 0;
-			}
-
 			if (msg->err_pos >= 0)
 				http_capture_bad_message(&s->be->invalid_rep, s, msg, msg->msg_state, s->fe);
 			else if (txn->flags & TX_NOT_FIRST)
@@ -5374,6 +5316,11 @@ abort_response:
 
 		/* client abort with an abortonclose */
 		else if ((rep->flags & CF_SHUTR) && ((s->req->flags & (CF_SHUTR|CF_SHUTW)) == (CF_SHUTR|CF_SHUTW))) {
+			if(s->req->flags & CF_READ_TIMEOUT)
+			{
+				rep->analysers = 0;
+				return 0;
+			}
 			s->fe->fe_counters.cli_aborts++;
 			s->be->be_counters.cli_aborts++;
 			if (objt_server(s->target))
