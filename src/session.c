@@ -2410,7 +2410,9 @@ struct task *process_session(struct task *t)
 				if(!(s->req->flags & CF_READ_TIMEOUT))
 				{
 					s->req->analysers |= AN_REQ_WAIT_HTTP;
-					s->txn.req.msg_state = HTTP_MSG_LAST_LF;
+					if(s->txn.req.msg_state > HTTP_MSG_BODY) {
+						s->txn.req.msg_state = HTTP_MSG_LAST_LF;
+					}
 				}
 			}
 		}
